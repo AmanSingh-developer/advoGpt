@@ -1,40 +1,35 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-import strawberry
-from strawberry.fastapi import GraphQLRouter
-from app.auth.login import router as login_router
+# app/main.py
+from fastapi import FastAPI, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
+# from app.routes import ai_routes
+from app.database import get_db
 
-app = FastAPI()
+app = FastAPI(title="Legal AI Backend")
 
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# ---------------------------
-# GraphQL Schema
-# ---------------------------
-
-# @strawberry.type
-# class Query:
-#     @strawberry.field
-#     def hello(self) -> str:
-#         return "AI Legal Platform GraphQL Running 🚀"
-
-schema = strawberry.Schema(query=Query)
-
-graphql_app = GraphQLRouter(schema)
-
-app.include_router(graphql_app, prefix="/graphql")
+# app.include_router(ai_routes.router)
 
 
 @app.get("/")
 def root():
-    return {"message": "REST API Running 🚀"}
+    return {"message": "Legal AI Backend Running 🚀"}
 
 
-app.include_router(login_router)
+# ✅ DB TEST ENDPOINT
+@app.get("/test-db")
+async def test_db(db: AsyncSession = Depends(get_db)):
+    try:
+        result = await db.execute(text("SELECT 1"))
+        value = result.scalar()
+
+        return {
+            "status": "success",
+            "db": "connected",
+            "result": value
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "db": "failed",
+            "error": str(e)
+        }
