@@ -10,3 +10,4 @@ python-dotenv==1.0.1
 
 pydantic==2.7.4
 openai==1.109.1
+strawberry-graphql[fastapi]==0.224.0

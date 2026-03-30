@@ -2,10 +2,21 @@
 from fastapi import FastAPI, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+# app/main.py
+import strawberry
+from fastapi import FastAPI
+from strawberry.fastapi import GraphQLRouter
+
+from app.graphql.query import Query
+from app.graphql.mutation import Mutation
 # from app.routes import ai_routes
+from strawberry.fastapi import GraphQLRouter
 from app.database import get_db
+import strawberry
 
 app = FastAPI(title="Legal AI Backend")
+schema = strawberry.Schema(query=Query, mutation=Mutation)
+gql_app = GraphQLRouter(schema)
 
 # app.include_router(ai_routes.router)
 
@@ -33,3 +44,8 @@ async def test_db(db: AsyncSession = Depends(get_db)):
             "db": "failed",
             "error": str(e)
         }
+
+
+# schema = strawberry.Schema(query=Query, mutation=Mutation)
+app.include_router(gql_app, prefix="/graphql")
+# app.include_router(GraphQLRouter(schema), prefix="/graphql")
