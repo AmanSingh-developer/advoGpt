@@ -11,7 +11,7 @@ export default function Chat() {
   const classes = useChatStyles();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
+  const [, setIsTyping] = useState(false);
 
   const fakeAIResponse =
     "Case Strength: Medium. Based on your description, this appears to be a potential employment dispute. Suggested next steps: collect payment proof and consider sending a legal notice.";
@@ -27,7 +27,7 @@ export default function Chat() {
         const updated = [...prev];
         const lastMsg = updated[updated.length - 1];
 
-        if (lastMsg.role === "ai") {
+        if (lastMsg?.role === "ai") {
           lastMsg.text = fullText.slice(0, index);
         }
 

@@ -13,22 +13,10 @@ import { Visibility, VisibilityOff } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
 import { useLoginStyles } from "./Login.Style";
 import { useState } from "react";
-import { gql } from "@apollo/client";
-import { useQuery } from "@apollo/client/react";
 
 export default function Login() {
   const classes = useLoginStyles();
   const navigate = useNavigate();
-
-  const GET_HELLO = gql`
-  query {
-    hello
-  }
-`;
-
-const { data, loading: l, error: r } = useQuery(GET_HELLO);
-
-console.log(data);
 
 
   const [email, setEmail] = useState("");
