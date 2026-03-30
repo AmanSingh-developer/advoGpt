@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import {
   AppBar,
   Toolbar,
@@ -13,9 +13,32 @@ import {
   Box,
   Chip,
   Divider,
+  CircularProgress,
 } from "@mui/material";
+import { gql } from "@apollo/client";
+import { useMutation } from "@apollo/client/react";
 
-type Strength = "Strong" | "Medium" | "Weak" | "";
+const ANALYZE_CASE_MUTATION = gql`
+  mutation AnalyzeCase($story: String!, $caseType: String!) {
+    analyzeCase(input: { story: $story, caseType: $caseType }) {
+      strength
+      reason
+      legalAreas
+      nextSteps
+    }
+  }
+`;
+
+interface AnalyzeCaseResponse {
+  analyzeCase: {
+    strength: string;
+    reason: string;
+    legalAreas: string[];
+    nextSteps: string[];
+  };
+}
+
+type Strength = "STRONG" | "MEDIUM" | "WEAK" | "";
 
 const CASE_TYPES = [
   "Employment / Salary Issue",
@@ -27,47 +50,51 @@ const CASE_TYPES = [
 ];
 
 const strengthColor = (s: Strength) => {
-  if (s === "Strong") return "success";
-  if (s === "Medium") return "warning";
-  if (s === "Weak") return "error";
+  if (s === "STRONG") return "success";
+  if (s === "MEDIUM") return "warning";
+  if (s === "WEAK") return "error";
   return "default";
 };
 
-const CaseStrengthAnalyzer: React.FC = () => {
+const strengthLabel = (s: Strength) => {
+  if (s === "STRONG") return "Strong";
+  if (s === "MEDIUM") return "Medium";
+  if (s === "WEAK") return "Weak";
+  return "";
+};
+
+const CaseStrengthAnalyzer = () => {
   const [story, setStory] = useState("");
   const [caseType, setCaseType] = useState("");
-  const [loading, setLoading] = useState(false);
 
-  // Result state (replace with GraphQL result later)
   const [strength, setStrength] = useState<Strength>("");
   const [reason, setReason] = useState("");
   const [legalAreas, setLegalAreas] = useState<string[]>([]);
   const [nextSteps, setNextSteps] = useState<string[]>([]);
 
+  const [analyzeCase, { loading }] = useMutation<AnalyzeCaseResponse>(ANALYZE_CASE_MUTATION);
+
   const handleAnalyze = async () => {
-    if (!story.trim()) return;
+    if (!story.trim() || !caseType) return;
 
-    setLoading(true);
+    try {
+      const { data } = await analyzeCase({
+        variables: { story, caseType },
+      });
 
-    // TODO: Replace this mock with GraphQL mutation call
-    setTimeout(() => {
-      setStrength("Strong");
-      setReason(
-        "Employer non-payment for multiple months indicates a potential breach of labour laws and employment contract obligations."
-      );
-      setLegalAreas(["Labour Law", "Employment Contract Violation"]);
-      setNextSteps([
-        "Send a legal notice to your employer",
-        "Collect salary/payment records",
-        "Consult a labour lawyer",
-      ]);
-      setLoading(false);
-    }, 900);
+      if (data?.analyzeCase) {
+        setStrength(data.analyzeCase.strength as Strength);
+        setReason(data.analyzeCase.reason);
+        setLegalAreas(data.analyzeCase.legalAreas);
+        setNextSteps(data.analyzeCase.nextSteps);
+      }
+    } catch (err) {
+      console.error("Analysis failed:", err);
+    }
   };
 
   return (
-    <Box sx={{  bgcolor: "#f5f7fb" }}>
-      {/* Header */}
+    <Box sx={{ bgcolor: "#f5f7fb" }}>
       <AppBar position="static" sx={{ bgcolor: "#1f3a6d" }}>
         <Toolbar sx={{ display: "flex", justifyContent: "space-between" }}>
           <Typography variant="h6" fontWeight={700}>
@@ -80,7 +107,6 @@ const CaseStrengthAnalyzer: React.FC = () => {
         </Toolbar>
       </AppBar>
 
-      {/* Title */}
       <Container maxWidth="lg" sx={{ py: 4 }}>
         <Typography variant="h4" fontWeight={700} textAlign="center" gutterBottom>
           Case Strength Analyzer
@@ -89,7 +115,6 @@ const CaseStrengthAnalyzer: React.FC = () => {
           Describe your legal problem and get AI-powered analysis in seconds.
         </Typography>
 
-        {/* Input Card */}
         <Card elevation={3} sx={{ mb: 4 }}>
           <CardContent>
             <Typography variant="h6" fontWeight={600} mb={2}>
@@ -135,13 +160,12 @@ const CaseStrengthAnalyzer: React.FC = () => {
                   "&:hover": { bgcolor: "#1f4fa1" },
                 }}
               >
-                {loading ? "Analyzing..." : "Analyze Case"}
+                {loading ? <CircularProgress size={24} /> : "Analyze Case"}
               </Button>
             </Box>
           </CardContent>
         </Card>
 
-        {/* Result Card */}
         {(strength || reason || legalAreas.length > 0) && (
           <Card elevation={3}>
             <CardContent>
@@ -150,18 +174,18 @@ const CaseStrengthAnalyzer: React.FC = () => {
               </Typography>
 
               <Grid container spacing={2}>
-                <Grid item xs={12} md={4}>
+                <Grid size={{ xs: 12, md: 4 }}>
                   <Typography variant="subtitle2" color="text.secondary">
                     Case Strength
                   </Typography>
                   <Chip
-                    label={strength || "N/A"}
+                    label={strengthLabel(strength) || "N/A"}
                     color={strengthColor(strength)}
                     sx={{ mt: 1, fontWeight: 700 }}
                   />
                 </Grid>
 
-                <Grid item xs={12} md={8}>
+                <Grid size={{ xs: 12, md: 8 }}>
                   <Typography variant="subtitle2" color="text.secondary">
                     Why This Case Strength?
                   </Typography>
@@ -198,7 +222,6 @@ const CaseStrengthAnalyzer: React.FC = () => {
           </Card>
         )}
 
-        {/* Footer Disclaimer */}
         <Typography
           variant="caption"
           display="block"
