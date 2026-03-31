@@ -6,12 +6,30 @@ from app.config import settings
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
+import re
+
+MAX_PASSWORD_LENGTH = 72
+
+def validate_password(password: str) -> tuple[bool, str]:
+    if not re.search(r"[A-Z]", password):
+        return False, "Password must contain at least one uppercase letter"
+    if not re.search(r"[a-z]", password):
+        return False, "Password must contain at least one lowercase letter"
+    if not re.search(r"\d", password):
+        return False, "Password must contain at least one number"
+    if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", password):
+        return False, "Password must contain at least one special character"
+    return True, ""
+
+
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    truncated = password[:MAX_PASSWORD_LENGTH]
+    return pwd_context.hash(truncated)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    truncated = plain_password[:MAX_PASSWORD_LENGTH]
+    return pwd_context.verify(truncated, hashed_password)
 
 
 def create_access_token(user_id: str, email: str) -> str:

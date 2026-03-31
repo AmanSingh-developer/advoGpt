@@ -12,6 +12,11 @@ class Settings:
     JWT_SECRET = os.getenv("JWT_SECRET", "your-super-secret-jwt-key-change-in-production")
     JWT_ALGORITHM = "HS256"
     JWT_EXPIRATION_HOURS = 24
+    PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+    PINECONE_INDEX = os.getenv("PINECONE_INDEX", "advo-gpt")
+    PINECONE_CLOUD = os.getenv("PINECONE_CLOUD", "aws")
+    PINECONE_REGION = os.getenv("PINECONE_REGION", "us-east-1")
+    UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploads")
 
 
 settings = Settings()

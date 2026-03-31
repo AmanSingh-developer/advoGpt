@@ -12,6 +12,7 @@ class CaseStrength(Enum):
 
 @strawberry.type
 class CaseAnalysisResult:
+    category: str
     strength: CaseStrength
     reason: str
     legal_areas: List[str]
