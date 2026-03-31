@@ -76,7 +76,7 @@ export default function Login() {
           lastName: data.login.user.lastName,
         };
         authLogin(data.login.token, user);
-        navigate("/select-case");
+        navigate("/chat");
       }
     } catch (err: any) {
       setError(err.message || "Login failed. Please try again.");

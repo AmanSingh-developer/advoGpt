@@ -10,52 +10,138 @@ import {
   Fade,
   Grow,
   IconButton,
+  List,
+  ListItem,
+  ListItemText,
+  Divider,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  ListItemButton,
 } from "@mui/material";
 import { useState, useEffect, useRef } from "react";
 import { useChatStyles } from "./Chat.Style";
 import { gql } from "@apollo/client";
-import { useLazyQuery } from "@apollo/client/react";
+import { useLazyQuery, useMutation, useQuery } from "@apollo/client/react";
 import { CircularProgress, Alert } from "@mui/material";
 import LogoutIcon from "@mui/icons-material/Logout";
 import SendIcon from "@mui/icons-material/Send";
 import GavelIcon from "@mui/icons-material/Gavel";
 import PersonIcon from "@mui/icons-material/Person";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import AddIcon from "@mui/icons-material/Add";
+import DeleteIcon from "@mui/icons-material/Delete";
+import DescriptionIcon from "@mui/icons-material/Description";
+import FolderIcon from "@mui/icons-material/Folder";
+import AssessmentIcon from "@mui/icons-material/Assessment";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 
-const ANALYZE_CASE_QUERY = gql`
-  query AnalyzeCase($story: String!, $caseType: String!) {
-    analyzeCase(input: { story: $story, caseType: $caseType }) {
-      strength
-      reason
-      legalAreas
-      nextSteps
+const GET_CHAT_SESSIONS = gql`
+  query GetChatSessions {
+    getChatSessions {
+      id
+      title
+      caseType
+      createdAt
+      updatedAt
+      messageCount
     }
   }
 `;
 
-interface AnalyzeCaseResponse {
-  analyzeCase: {
-    strength: string;
-    reason: string;
-    legalAreas: string[];
-    nextSteps: string[];
-  };
+const GET_CHAT_SESSION = gql`
+  query GetChatSession($sessionId: String!) {
+    getChatSession(sessionId: $sessionId) {
+      id
+      title
+      caseType
+      createdAt
+      updatedAt
+      messages {
+        id
+        role
+        content
+        msgMetadata
+        createdAt
+      }
+    }
+  }
+`;
+
+const CREATE_CHAT_SESSION = gql`
+  mutation CreateChatSession($title: String!, $caseType: String) {
+    createChatSession(input: { title: $title, caseType: $caseType }) {
+      id
+      title
+      caseType
+      createdAt
+      updatedAt
+      messages {
+        id
+        role
+        content
+        msgMetadata
+        createdAt
+      }
+    }
+  }
+`;
+
+const SEND_MESSAGE = gql`
+  mutation SendMessage($sessionId: String!, $message: String!) {
+    sendMessage(input: { sessionId: $sessionId, message: $message }) {
+      id
+      role
+      content
+      msgMetadata
+      createdAt
+    }
+  }
+`;
+
+const DELETE_CHAT_SESSION = gql`
+  mutation DeleteChatSession($sessionId: String!) {
+    deleteChatSession(sessionId: $sessionId) {
+      success
+      message
+    }
+  }
+`;
+
+interface ChatSession {
+  id: string;
+  title: string;
+  caseType: string | null;
+  createdAt: string;
+  updatedAt: string | null;
+  messageCount?: number;
+  messages?: ChatMessage[];
 }
 
-type Message = {
-  id: number;
-  role: "user" | "ai";
+interface ChatMessage {
+  id: string;
+  role: string;
+  content: string;
+  msgMetadata: string | null;
+  createdAt: string;
+}
+
+interface Message {
+  id: string;
+  role: "user" | "assistant";
   text: string;
   analysis?: {
+    category: string;
     strength: string;
     reason: string;
     legalAreas: string[];
     nextSteps: string[];
   };
   timestamp: Date;
-};
+}
 
 const strengthConfig = {
   STRONG: { color: "#4CAF50", bg: "#E8F5E9", label: "Strong" },
@@ -63,16 +149,38 @@ const strengthConfig = {
   WEAK: { color: "#F44336", bg: "#FFEBEE", label: "Weak" },
 };
 
+type FeatureTab = "chat" | "documents" | "fir" | "notice";
+
+const features = [
+  { id: "chat" as FeatureTab, label: "Case Analysis", icon: <GavelIcon /> },
+  { id: "fir" as FeatureTab, label: "FIR Analysis", icon: <DescriptionIcon /> },
+  { id: "documents" as FeatureTab, label: "Documents", icon: <FolderIcon /> },
+  { id: "notice" as FeatureTab, label: "Legal Notice", icon: <AssessmentIcon /> },
+];
+
 export default function Chat() {
   useChatStyles();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, logout, token } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [caseType, setCaseType] = useState<string>("");
   const [error, setError] = useState("");
+  const [currentSession, setCurrentSession] = useState<ChatSession | null>(null);
+  const [newChatDialogOpen, setNewChatDialogOpen] = useState(false);
+  const [newChatTitle, setNewChatTitle] = useState("");
+  const [activeFeature, setActiveFeature] = useState<FeatureTab>("chat");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const { data: sessionsData, refetch: refetchSessions } = useQuery(GET_CHAT_SESSIONS, {
+    skip: !token,
+  });
+
+  const [getChatSession] = useLazyQuery(GET_CHAT_SESSION);
+  const [createChatSession, { loading: creatingSession }] = useMutation(CREATE_CHAT_SESSION);
+  const [sendMessageMutation, { loading }] = useMutation(SEND_MESSAGE);
+  const [deleteChatSession] = useMutation(DELETE_CHAT_SESSION);
 
   useEffect(() => {
     const storedCaseType = localStorage.getItem("caseType");
@@ -85,19 +193,108 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const [analyzeCase, { loading }] = useLazyQuery<AnalyzeCaseResponse>(ANALYZE_CASE_QUERY);
-
   const handleLogout = () => {
     logout();
     navigate("/");
   };
 
+  const loadSession = async (session: ChatSession) => {
+    try {
+      const { data } = await getChatSession({ variables: { sessionId: session.id } });
+      if (data?.getChatSession) {
+        setCurrentSession(data.getChatSession);
+        const loadedMessages: Message[] = data.getChatSession.messages.map((msg: ChatMessage) => {
+          const analysis = msg.msgMetadata?.startsWith("strength:") ? parseAnalysisFromContent(msg.content) : undefined;
+          return {
+            id: msg.id,
+            role: msg.role === "assistant" ? "assistant" : "user",
+            text: analysis ? "" : msg.content,
+            analysis,
+            timestamp: new Date(msg.createdAt),
+          };
+        });
+        setMessages(loadedMessages);
+        if (data.getChatSession.caseType) {
+          setCaseType(data.getChatSession.caseType);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load chat session:", err);
+    }
+  };
+
+  const parseAnalysisFromContent = (content: string) => {
+    const categoryMatch = content.match(/\*\*Case Category:\*\* ([\s\S]*?)\n/);
+    const category = categoryMatch ? categoryMatch[1].trim() : "General";
+
+    const strengthMatch = content.match(/\*\*Case Strength:\*\* (\w+)/);
+    const strength = strengthMatch ? strengthMatch[1] : "MEDIUM";
+
+    const reasonMatch = content.match(/\*\*Analysis:\*\*([\s\S]*?)\*\*Relevant Legal Areas:\*\*/);
+    const reason = reasonMatch ? reasonMatch[1].trim() : "";
+
+    const areasMatch = content.match(/\*\*Relevant Legal Areas:\*\*([\s\S]*?)\*\*Suggested Next Steps:\*\*/);
+    const legalAreas = areasMatch
+      ? areasMatch[1].split(",").map((a: string) => a.trim()).filter(Boolean)
+      : [];
+
+    const stepsMatch = content.match(/\*\*Suggested Next Steps:\*\*([\s\S]*?)$/);
+    const nextSteps = stepsMatch
+      ? stepsMatch[1]
+          .split("\n")
+          .map((s: string) => s.replace(/^\d+\.\s*/, "").trim())
+          .filter(Boolean)
+      : [];
+
+    return { category, strength, reason, legalAreas, nextSteps };
+  };
+
+  const handleCreateChat = async () => {
+    try {
+      const { data } = await createChatSession({
+        variables: {
+          title: newChatTitle || `Chat - ${new Date().toLocaleDateString()}`,
+          caseType: null,
+        },
+      });
+
+      if (data?.createChatSession) {
+        setCurrentSession(data.createChatSession);
+        setMessages([]);
+      }
+      setNewChatDialogOpen(false);
+      setNewChatTitle("");
+      refetchSessions();
+    } catch (err) {
+      console.error("Failed to create chat:", err);
+    }
+  };
+
+  const handleDeleteChat = async (sessionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await deleteChatSession({ variables: { sessionId } });
+      refetchSessions();
+      if (currentSession?.id === sessionId) {
+        setCurrentSession(null);
+        setMessages([]);
+      }
+    } catch (err) {
+      console.error("Failed to delete chat:", err);
+    }
+  };
+
   const sendMessage = async () => {
     if (!input.trim() || loading) return;
 
+    if (!currentSession) {
+      await handleCreateChat();
+      if (!currentSession) return;
+    }
+
     setError("");
     const userMsg: Message = {
-      id: Date.now(),
+      id: `temp-${Date.now()}`,
       role: "user",
       text: input,
       timestamp: new Date(),
@@ -106,38 +303,27 @@ export default function Chat() {
     setInput("");
 
     try {
-      const { data, error: gqlError } = await analyzeCase({
-        variables: { story: input, caseType },
+      const { data } = await sendMessageMutation({
+        variables: {
+          sessionId: currentSession.id,
+          message: input,
+        },
       });
 
-      if (gqlError) {
-        throw new Error(gqlError.message);
-      }
-
-      if (data?.analyzeCase) {
+      if (data?.sendMessage) {
+        const analysis = parseAnalysisFromContent(data.sendMessage.content);
         const aiMsg: Message = {
-          id: Date.now() + 1,
-          role: "ai",
-          text: "",
-          analysis: {
-            strength: data.analyzeCase.strength,
-            reason: data.analyzeCase.reason,
-            legalAreas: data.analyzeCase.legalAreas,
-            nextSteps: data.analyzeCase.nextSteps,
-          },
-          timestamp: new Date(),
+          id: data.sendMessage.id,
+          role: "assistant",
+          text: analysis ? "" : data.sendMessage.content,
+          analysis: analysis.reason ? analysis : undefined,
+          timestamp: new Date(data.sendMessage.createdAt),
         };
         setMessages((prev) => [...prev, aiMsg]);
       }
+      refetchSessions();
     } catch (err: any) {
       setError(err.message || "Failed to analyze case. Please try again.");
-      const errorMsg: Message = {
-        id: Date.now() + 1,
-        role: "ai",
-        text: "Sorry, I couldn't analyze your case. Please try again or try rephrasing your question.",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMsg]);
     }
   };
 
@@ -153,46 +339,155 @@ export default function Chat() {
   };
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", height: "100vh", bgcolor: "#f0f2f5" }}>
+    <Box sx={{ display: "flex", height: "100vh", bgcolor: "#f0f2f5" }}>
+      {/* Left Sidebar - Features */}
       <Box
         sx={{
-          bgcolor: "#1a237e",
-          color: "white",
-          px: 3,
-          py: 1.5,
+          width: 250,
+          bgcolor: "white",
+          borderRight: "1px solid #e0e0e0",
           display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          boxShadow: 2,
+          flexDirection: "column",
         }}
       >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <IconButton size="small" onClick={() => navigate("/select-case")} sx={{ color: "white" }}>
-            <ArrowBackIcon />
-          </IconButton>
-          <Avatar sx={{ bgcolor: "#3949ab", width: 36, height: 36 }}>
-            <GavelIcon />
-          </Avatar>
-          <Box>
-            <Typography variant="subtitle1" fontWeight={600}>
-              LegalGPT Assistant
-            </Typography>
-            <Typography variant="caption" sx={{ opacity: 0.8 }}>
-              {caseType || "Legal Consultation"}
-            </Typography>
+        {/* Logo/Header */}
+        <Box sx={{ p: 2, borderBottom: "1px solid #e0e0e0" }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+            <Avatar sx={{ bgcolor: "#1a237e", width: 36, height: 36 }}>
+              <GavelIcon sx={{ fontSize: 20 }} />
+            </Avatar>
+            <Box>
+              <Typography variant="subtitle1" fontWeight={700} sx={{ color: "#1a237e", fontSize: "1rem" }}>
+                LegalGPT
+              </Typography>
+            </Box>
           </Box>
         </Box>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <Typography variant="body2" sx={{ opacity: 0.9 }}>
-            {user?.firstName}
-          </Typography>
-          <Fab size="small" color="error" onClick={handleLogout} title="Logout">
-            <LogoutIcon />
-          </Fab>
+
+        <Divider />
+
+        {/* Feature Navigation */}
+        <List sx={{ flex: 1, py: 1 }}>
+          {features.map((feature) => (
+            <ListItemButton
+              key={feature.id}
+              selected={activeFeature === feature.id}
+              onClick={() => setActiveFeature(feature.id)}
+              sx={{
+                mx: 1,
+                borderRadius: 2,
+                mb: 0.5,
+                py: 0.75,
+                "&.Mui-selected": {
+                  bgcolor: "#E8EAF6",
+                  "&:hover": { bgcolor: "#C5CAE9" },
+                },
+              }}
+            >
+              <Box sx={{ mr: 1.5, color: activeFeature === feature.id ? "#1a237e" : "#666" }}>
+                {feature.icon}
+              </Box>
+              <ListItemText
+                primary={feature.label}
+                primaryTypographyProps={{
+                  fontSize: "0.85rem",
+                  fontWeight: activeFeature === feature.id ? 600 : 400,
+                  color: activeFeature === feature.id ? "#1a237e" : "text.primary",
+                }}
+              />
+            </ListItemButton>
+          ))}
+        </List>
+
+        {/* User Info & Logout */}
+        <Box sx={{ p: 2, borderTop: "1px solid #e0e0e0" }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <Avatar sx={{ bgcolor: "#1a237e", width: 28, height: 28 }}>
+              <PersonIcon sx={{ fontSize: 16 }} />
+            </Avatar>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="body2" fontWeight={600} noWrap sx={{ fontSize: "0.8rem" }}>
+                {user?.firstName}
+              </Typography>
+            </Box>
+            <IconButton size="small" onClick={handleLogout} color="error">
+              <LogoutIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Box>
         </Box>
       </Box>
 
-      <Box sx={{ flex: 1, overflow: "auto", p: 2 }}>
+      {/* Middle - Chat Area */}
+      <Box sx={{ flex: 1, display: "flex", flexDirection: "column" }}>
+        {/* Top Bar */}
+        <Box
+          sx={{
+            bgcolor: "#1a237e",
+            color: "white",
+            px: 3,
+            py: 1.5,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <IconButton size="small" onClick={() => navigate("/select-case")} sx={{ color: "white" }}>
+              <ArrowBackIcon />
+            </IconButton>
+            <Box>
+              <Typography variant="subtitle1" fontWeight={600}>
+                {currentSession?.title || "LegalGPT Assistant"}
+              </Typography>
+              <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                {currentSession?.caseType || "Describe your case"}
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
+
+        {/* Feature Panels */}
+        {activeFeature === "fir" && (
+          <Box sx={{ flex: 1, p: 3, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column" }}>
+            <DescriptionIcon sx={{ fontSize: 80, color: "#ccc", mb: 2 }} />
+            <Typography variant="h5" gutterBottom>
+              FIR Analysis (Coming Soon)
+            </Typography>
+            <Typography color="text.secondary">
+              Upload an FIR document to analyze IPC sections and case details
+            </Typography>
+          </Box>
+        )}
+
+        {activeFeature === "documents" && (
+          <Box sx={{ flex: 1, p: 3, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column" }}>
+            <FolderIcon sx={{ fontSize: 80, color: "#ccc", mb: 2 }} />
+            <Typography variant="h5" gutterBottom>
+              Document Analyzer (Coming Soon)
+            </Typography>
+            <Typography color="text.secondary">
+              Upload contracts, agreements, or legal documents for analysis
+            </Typography>
+          </Box>
+        )}
+
+        {activeFeature === "notice" && (
+          <Box sx={{ flex: 1, p: 3, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column" }}>
+            <AssessmentIcon sx={{ fontSize: 80, color: "#ccc", mb: 2 }} />
+            <Typography variant="h5" gutterBottom>
+              Legal Notice Generator (Coming Soon)
+            </Typography>
+            <Typography color="text.secondary">
+              Generate legal notices for salary recovery, property disputes, etc.
+            </Typography>
+          </Box>
+        )}
+
+        {/* Chat Messages Area */}
+        {/* Chat Messages Area */}
+        {activeFeature === "chat" && (
+          <>
+            <Box sx={{ flex: 1, overflow: "auto", p: 2 }}>
         {messages.length === 0 && (
           <Fade in timeout={500}>
             <Paper
@@ -230,7 +525,7 @@ export default function Chat() {
                 <Chip label="Legal Guidance" color="primary" size="small" />
               </Box>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 4, fontStyle: "italic" }}>
-                Describe your legal situation below to get started...
+                {currentSession ? "Describe your legal situation below..." : "Start a new chat to get started..."}
               </Typography>
             </Paper>
           </Fade>
@@ -271,7 +566,7 @@ export default function Chat() {
                 mb: 2,
               }}
             >
-              {msg.role === "ai" && (
+              {msg.role === "assistant" && (
                 <Avatar sx={{ bgcolor: "#3949ab", mr: 1.5, mt: 0.5 }}>
                   <GavelIcon sx={{ fontSize: 20 }} />
                 </Avatar>
@@ -304,6 +599,19 @@ export default function Chat() {
                         Case Analysis Report
                       </Typography>
                     </Box>
+
+                    {msg.analysis.category && (
+                      <Box sx={{ mb: 2 }}>
+                        <Chip
+                          label={`Category: ${msg.analysis.category}`}
+                          sx={{
+                            bgcolor: "#3949ab",
+                            color: "white",
+                            fontWeight: 600,
+                          }}
+                        />
+                      </Box>
+                    )}
 
                     <Box
                       sx={{
@@ -338,7 +646,7 @@ export default function Chat() {
                         <span style={{ color: "#3949ab" }}>⚖️</span> Relevant Legal Areas
                       </Typography>
                       <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75 }}>
-                        {msg.analysis.legalAreas.map((area, idx) => (
+                        {msg.analysis.legalAreas.map((area: string, idx: number) => (
                           <Chip
                             key={idx}
                             label={area}
@@ -358,7 +666,7 @@ export default function Chat() {
                         <span style={{ color: "#3949ab" }}>📝</span> Suggested Next Steps
                       </Typography>
                       <Box component="ol" sx={{ m: 0, pl: 2.5 }}>
-                        {msg.analysis.nextSteps.map((step, idx) => (
+                        {msg.analysis.nextSteps.map((step: string, idx: number) => (
                           <li key={idx} style={{ marginBottom: 8 }}>
                             <Typography variant="body2" sx={{ lineHeight: 1.5 }}>
                               {step}
@@ -380,7 +688,7 @@ export default function Chat() {
                     sx={{
                       p: 2,
                       borderRadius: 2,
-                      bgcolor: "#333",
+                      bgcolor: msg.role === "user" ? "#1e88e5" : "#333",
                       color: "white",
                     }}
                   >
@@ -388,7 +696,7 @@ export default function Chat() {
                   </Paper>
                 )}
 
-                {msg.role === "ai" && (
+                {msg.role === "assistant" && (
                   <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.5, pl: 0.5 }}>
                     <Typography variant="caption" color="text.secondary">
                       {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
@@ -408,50 +716,146 @@ export default function Chat() {
         <div ref={messagesEndRef} />
       </Box>
 
-      {error && (
-        <Alert severity="error" onClose={() => setError("")} sx={{ mx: 2, mt: 1 }}>
-          {error}
-        </Alert>
-      )}
+            <Paper
+              elevation={8}
+              sx={{
+                p: 2,
+                mx: 2,
+                mb: 2,
+                borderRadius: 4,
+                display: "flex",
+                gap: 1,
+                alignItems: "center",
+              }}
+            >
+              <TextField
+                fullWidth
+                placeholder="Describe your legal situation..."
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyPress={handleKeyPress}
+                disabled={loading}
+                multiline
+                maxRows={4}
+                variant="outlined"
+                sx={{
+                  "& .MuiOutlinedInput-root": {
+                    borderRadius: 3,
+                  },
+                }}
+                inputRef={inputRef}
+              />
+              <Fab
+                color="primary"
+                onClick={sendMessage}
+                disabled={loading || !input.trim()}
+                sx={{ flexShrink: 0 }}
+              >
+                {loading ? <CircularProgress size={24} color="inherit" /> : <SendIcon />}
+              </Fab>
+            </Paper>
 
-      <Paper
-        elevation={8}
+            {error && (
+              <Alert severity="error" onClose={() => setError("")} sx={{ mx: 2, mb: 2 }}>
+                {error}
+              </Alert>
+            )}
+          </>
+        )}
+      </Box>
+
+      {/* Right Sidebar - Chat History */}
+      <Box
         sx={{
-          p: 2,
-          mx: 2,
-          mb: 2,
-          borderRadius: 4,
+          width: 280,
+          bgcolor: "white",
+          borderLeft: "1px solid #e0e0e0",
           display: "flex",
-          gap: 1,
-          alignItems: "center",
+          flexDirection: "column",
         }}
       >
-        <TextField
-          fullWidth
-          placeholder="Describe your legal situation..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyPress={handleKeyPress}
-          disabled={loading}
-          multiline
-          maxRows={4}
-          variant="outlined"
-          sx={{
-            "& .MuiOutlinedInput-root": {
-              borderRadius: 3,
-            },
-          }}
-          inputRef={inputRef}
-        />
-        <Fab
-          color="primary"
-          onClick={sendMessage}
-          disabled={loading || !input.trim()}
-          sx={{ flexShrink: 0 }}
-        >
-          {loading ? <CircularProgress size={24} color="inherit" /> : <SendIcon />}
-        </Fab>
-      </Paper>
+        <Box sx={{ p: 2, borderBottom: "1px solid #e0e0e0" }}>
+          <Button
+            fullWidth
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setNewChatDialogOpen(true)}
+            sx={{
+              bgcolor: "#1a237e",
+              "&:hover": { bgcolor: "#283593" },
+              borderRadius: 2,
+            }}
+          >
+            New Chat
+          </Button>
+        </Box>
+        <Box sx={{ p: 2, borderBottom: "1px solid #e0e0e0", bgcolor: "#f5f5f5" }}>
+          <Typography variant="subtitle2" fontWeight={600} color="text.secondary">
+            CHAT HISTORY
+          </Typography>
+        </Box>
+        <List sx={{ flex: 1, overflow: "auto", py: 1 }}>
+          {sessionsData?.getChatSessions?.map((session: ChatSession) => (
+            <ListItemButton
+              key={session.id}
+              onClick={() => loadSession(session)}
+              sx={{
+                mx: 1,
+                mb: 0.5,
+                borderRadius: 1,
+                bgcolor: currentSession?.id === session.id ? "#E8EAF6" : "transparent",
+                "&:hover": { bgcolor: "#f0f0f0" },
+              }}
+              secondaryAction={
+                <IconButton
+                  edge="end"
+                  size="small"
+                  onClick={(e) => handleDeleteChat(session.id, e)}
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              }
+            >
+              <ListItemText
+                primary={session.title}
+                secondary={session.caseType || "General"}
+                primaryTypographyProps={{ noWrap: true, variant: "body2", fontWeight: 500 }}
+                secondaryTypographyProps={{ noWrap: true, variant: "caption" }}
+              />
+            </ListItemButton>
+          ))}
+          {(!sessionsData?.getChatSessions || sessionsData.getChatSessions.length === 0) && (
+            <ListItem>
+              <ListItemText
+                primary="No chat history"
+                secondary="Start a conversation"
+                sx={{ textAlign: "center" }}
+              />
+            </ListItem>
+          )}
+        </List>
+      </Box>
+
+      {/* Dialogs */}
+      <Dialog open={newChatDialogOpen} onClose={() => setNewChatDialogOpen(false)}>
+        <DialogTitle>Start New Chat</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Chat Title (optional)"
+            value={newChatTitle}
+            onChange={(e) => setNewChatTitle(e.target.value)}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setNewChatDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleCreateChat} variant="contained" disabled={creatingSession}>
+            {creatingSession ? <CircularProgress size={20} /> : "Create"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

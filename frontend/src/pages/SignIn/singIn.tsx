@@ -10,7 +10,12 @@ import {
   CircularProgress,
   Alert,
   Avatar,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
 } from "@mui/material";
+import { Check, Close } from "@mui/icons-material";
 import { Visibility, VisibilityOff, Gavel } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
@@ -57,15 +62,24 @@ export default function Register() {
 
   const [signupMutation, { loading }] = useMutation<SignupResponse>(SIGNUP_MUTATION);
 
+  const requirements = [
+    { test: /[A-Z]/, label: "At least one uppercase letter" },
+    { test: /[a-z]/, label: "At least one lowercase letter" },
+    { test: /\d/, label: "At least one number" },
+    { test: /[!@#$%^&*(),.?":{}|<>]/, label: "At least one special character" },
+  ];
+
   const handleSignup = async () => {
     if (!firstName || !lastName || !email || !password) {
       setError("Please fill in all fields.");
       return;
     }
 
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
-      return;
+    for (const req of requirements) {
+      if (!req.test.test(password)) {
+        setError(req.label + ".");
+        return;
+      }
     }
 
     setError("");
@@ -83,7 +97,7 @@ export default function Register() {
           lastName: data.signup.user.lastName,
         };
         authLogin(data.signup.token, user);
-        navigate("/select-case");
+        navigate("/chat");
       }
     } catch (err: any) {
       setError(err.message || "Signup failed. Please try again.");
@@ -182,7 +196,7 @@ export default function Register() {
           label="Password"
           type={showPassword ? "text" : "password"}
           fullWidth
-          sx={{ mb: 2 }}
+          sx={{ mb: 1 }}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           onKeyPress={handleKeyPress}
@@ -198,8 +212,32 @@ export default function Register() {
           }}
         />
 
+        <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: "block" }}>
+          Password must contain:
+        </Typography>
+        <List dense disablePadding>
+          {requirements.map((req, index) => (
+            <ListItem key={index} disablePadding sx={{ py: 0 }}>
+              <ListItemIcon sx={{ minWidth: 28 }}>
+                {req.test.test(password) ? (
+                  <Check sx={{ fontSize: 16, color: "green" }} />
+                ) : (
+                  <Close sx={{ fontSize: 16, color: "text.disabled" }} />
+                )}
+              </ListItemIcon>
+              <ListItemText
+                primary={req.label}
+                primaryTypographyProps={{
+                  variant: "caption",
+                  color: req.test.test(password) ? "green" : "text.disabled",
+                }}
+              />
+            </ListItem>
+          ))}
+        </List>
+
         {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
+          <Alert severity="error" sx={{ mt: 1 }}>
             {error}
           </Alert>
         )}

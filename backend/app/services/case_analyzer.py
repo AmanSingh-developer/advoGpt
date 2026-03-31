@@ -13,6 +13,7 @@ SYSTEM_PROMPT = """You are an expert Indian legal advisor AI. Analyze the user's
 
 Respond ONLY with valid JSON in this exact format:
 {
+    "category": "Auto-detected case category based on user's description (e.g., Criminal Law, Family Law, Consumer Protection, Labour Law, Property Law, etc.)",
     "strength": "STRONG" or "MEDIUM" or "WEAK",
     "reason": "A detailed explanation of why this case strength rating is given",
     "legal_areas": ["Area 1", "Area 2", "Area 3"],
@@ -20,6 +21,7 @@ Respond ONLY with valid JSON in this exact format:
 }
 
 Guidelines for assessment:
+- First, detect the category based on the user's description. Use categories like: Criminal Law, Family Law, Consumer Protection, Labour Law, Property Law, Contract Law, Civil Law, etc.
 - STRONG: Clear evidence, strong legal precedents, documented proof available
 - MEDIUM: Some evidence but gaps exist, mixed legal standing
 - WEAK: Weak evidence, unclear facts, or complex circumstances
@@ -32,16 +34,13 @@ Legal areas should be specific Indian laws like:
 - Criminal Law (IPC sections)
 - Family Law (Hindu Marriage Act, 1955)
 - Labour Law (Payment of Wages Act, 1936)
-- Consumer Protection Act, 2019
 - Companies Act, 2013
 
 Next steps should be practical and actionable for an Indian legal context."""
 
 
-async def analyze_legal_case(story: str, case_type: str) -> dict:
+async def analyze_legal_case(story: str, case_type: str = None, user_id: str = None) -> dict:
     user_message = f"""
-Case Type: {case_type}
-
 User's Legal Situation:
 {story}
 
@@ -50,14 +49,28 @@ Please analyze this case and provide your assessment in JSON format.
 
     content = ""
     try:
-        logger.info(f"Analyzing case: type={case_type}, story_length={len(story)}")
+        logger.info(f"Analyzing case: story_length={len(story)}")
+        
+        messages: list[dict] = [
+            {"role": "system", "content": SYSTEM_PROMPT}
+        ]
+
+        try:
+            from app.services.rag import rag_service
+            context = await rag_service.get_context(story, user_id)
+            if context:
+                messages.append({
+                    "role": "system",
+                    "content": f"Relevant legal knowledge:\n\n{context}"
+                })
+        except Exception as e:
+            logger.warning(f"RAG context retrieval failed: {e}")
+
+        messages.append({"role": "user", "content": user_message})
         
         response = await client.chat.completions.create(
             model=settings.OPENAI_MODEL or "gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_message}
-            ],
+            messages=messages,  # type: ignore
             temperature=0.7,
             max_tokens=1000,
         )
@@ -73,6 +86,7 @@ Please analyze this case and provide your assessment in JSON format.
         result = json.loads(content)
         
         return {
+            "category": result.get("category", "General"),
             "strength": CaseStrength[result["strength"]],
             "reason": result["reason"],
             "legal_areas": result["legal_areas"],
