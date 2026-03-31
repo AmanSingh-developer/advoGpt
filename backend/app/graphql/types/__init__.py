@@ -8,6 +8,11 @@ from app.graphql.types.chat import (
     CreateChatSessionInput,
     SendMessageInput,
 )
+from app.graphql.types.analysis import (
+    FIRAnalysisResult,
+    DocumentAnalysisResult,
+    FileUploadResult,
+)
 
 __all__ = [
     "UserType",
@@ -23,4 +28,7 @@ __all__ = [
     "ChatMessageInput",
     "CreateChatSessionInput",
     "SendMessageInput",
+    "FIRAnalysisResult",
+    "DocumentAnalysisResult",
+    "FileUploadResult",
 ]

@@ -4,9 +4,13 @@ from strawberry.types import Info
 from app.graphql.types import (
     CaseAnalysisResult,
     CaseAnalysisInput,
+    FIRAnalysisResult,
+    DocumentAnalysisResult,
 )
 from app.graphql.types.chat import ChatSessionType, ChatSessionListType, ChatMessageType
 from app.services import analyze_legal_case
+from app.services.fir_analyzer import analyze_fir
+from app.services.document_analyzer import analyze_document
 from app.database import get_db
 from sqlalchemy import select
 from app.models import ChatSession, ChatMessage
@@ -30,6 +34,34 @@ class Query:
             reason=result["reason"],
             legal_areas=result["legal_areas"],
             next_steps=result["next_steps"],
+        )
+
+    @strawberry.field
+    async def analyze_fir(self, info: Info, fir_text: str) -> FIRAnalysisResult:
+        user_id = info.context.get("user_id")
+        result = await analyze_fir(fir_text, user_id)
+        
+        return FIRAnalysisResult(
+            ipc_sections=result["ipc_sections"],
+            case_seriousness=result["case_seriousness"],
+            possible_defenses=result["possible_defenses"],
+            legal_implications=result["legal_implications"],
+            next_steps=result["next_steps"],
+        )
+
+    @strawberry.field
+    async def analyze_document_text(self, info: Info, document_text: str, doc_type: str = "General") -> DocumentAnalysisResult:
+        user_id = info.context.get("user_id")
+        result = await analyze_document(document_text, doc_type, user_id)
+        
+        return DocumentAnalysisResult(
+            document_type=result["document_type"],
+            key_terms=result["key_terms"],
+            obligations=result["obligations"],
+            risk_factors=result["risk_factors"],
+            missing_elements=result["missing_elements"],
+            recommendations=result["recommendations"],
+            legal_sections=result["legal_sections"],
         )
 
     @strawberry.field

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState } from "react";
 import type { ReactNode } from "react";
 
 interface User {
@@ -26,7 +26,9 @@ const getStoredAuth = () => {
     if (storedToken && storedUser) {
       return { token: storedToken, user: JSON.parse(storedUser) as User };
     }
-  } catch {}
+  } catch {
+    // ignore parse errors
+  }
   return { token: null, user: null };
 };
 
@@ -34,7 +36,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const storedAuth = getStoredAuth();
   const [user, setUser] = useState<User | null>(storedAuth.user);
   const [token, setToken] = useState<string | null>(storedAuth.token);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading] = useState(false);
 
   const login = (newToken: string, newUser: User) => {
     localStorage.setItem("token", newToken);
