@@ -17,6 +17,7 @@ import { useState, useImperativeHandle, forwardRef } from "react";
 import { gql } from "@apollo/client";
 import { useQuery, useMutation, useLazyQuery } from "@apollo/client/react";
 import CircularProgress from "@mui/material/CircularProgress";
+import { toast } from "react-toastify";
 
 const GET_CHAT_SESSIONS = gql`
   query GetChatSessions {
@@ -136,6 +137,8 @@ const ChatHistory = forwardRef<ChatHistoryRef, ChatHistoryProps>(({
 }, ref) => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [chatToDelete, setChatToDelete] = useState<{ id: string; title: string } | null>(null);
 
   const { data, refetch } = useQuery<GetChatSessionsResponse>(GET_CHAT_SESSIONS, { skip: !token });
   const [getChatSession] = useLazyQuery<GetChatSessionResponse>(GET_CHAT_SESSION);
@@ -161,21 +164,32 @@ const ChatHistory = forwardRef<ChatHistoryRef, ChatHistoryProps>(({
         setNewTitle("");
         refetch();
         onNewSessionCreated();
+        toast.success("Chat created successfully!");
       }
     } catch (err) {
-      console.error("Failed to create chat:", err);
+      toast.error("Failed to create chat. Please try again.");
     }
   };
 
-  const handleDelete = async (e: React.MouseEvent, sessionId: string) => {
+  const confirmDelete = (e: React.MouseEvent, sessionId: string, title: string) => {
     e.stopPropagation();
-    try {
-      await deleteChat({ variables: { sessionId } });
-      refetch();
-      onSessionDeleted();
-    } catch (err) {
-      console.error("Failed to delete chat:", err);
+    setChatToDelete({ id: sessionId, title });
+    setDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (chatToDelete) {
+      try {
+        await deleteChat({ variables: { sessionId: chatToDelete.id } });
+        refetch();
+        onSessionDeleted();
+        toast.success("Chat deleted successfully!");
+      } catch (err) {
+        toast.error("Failed to delete chat. Please try again.");
+      }
     }
+    setDeleteDialogOpen(false);
+    setChatToDelete(null);
   };
 
   const handleSelect = async (session: ChatSession) => {
@@ -185,7 +199,7 @@ const ChatHistory = forwardRef<ChatHistoryRef, ChatHistoryProps>(({
         onSelectSession(data.getChatSession);
       }
     } catch (err) {
-      console.error("Failed to load chat:", err);
+      toast.error("Failed to load chat. Please try again.");
     }
   };
 
@@ -242,7 +256,7 @@ const ChatHistory = forwardRef<ChatHistoryRef, ChatHistoryProps>(({
             <IconButton 
               edge="end" 
               size="small" 
-              onClick={(e) => handleDelete(e, session.id)}
+              onClick={(e) => confirmDelete(e, session.id, session.title)}
               sx={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)" }}
             >
               <DeleteIcon fontSize="small" />
@@ -272,6 +286,21 @@ const ChatHistory = forwardRef<ChatHistoryRef, ChatHistoryProps>(({
           <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
           <Button onClick={handleCreate} variant="contained" disabled={creating}>
             {creating ? <CircularProgress size={20} /> : "Create"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+        <DialogTitle>Delete Chat</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete "{chatToDelete?.title}"? This action cannot be undone and all messages will be permanently deleted.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleConfirmDelete} color="error" variant="contained">
+            Delete
           </Button>
         </DialogActions>
       </Dialog>

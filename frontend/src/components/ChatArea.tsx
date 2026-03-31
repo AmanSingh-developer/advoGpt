@@ -4,12 +4,10 @@ import {
   Typography,
   TextField,
   Button,
-  Paper,
   Avatar,
   Chip,
   Fade,
   Grow,
-  IconButton,
   CircularProgress,
   Alert,
 } from "@mui/material";
@@ -17,11 +15,15 @@ import {
   Gavel as GavelIcon,
   Person as PersonIcon,
   Send as SendIcon,
-  ArrowBack as ArrowBackIcon,
+  Lightbulb as LightbulbIcon,
+  Scale as ScaleIcon,
+  Description as DescriptionIcon,
+  Balance as BalanceIcon,
 } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
 import { gql } from "@apollo/client";
 import { useMutation } from "@apollo/client/react";
+import { toast } from "react-toastify";
 
 const CREATE_CHAT_SESSION = gql`
   mutation CreateChatSession($title: String!, $caseType: String) {
@@ -101,10 +103,17 @@ interface Message {
 }
 
 const strengthConfig = {
-  STRONG: { color: "#4CAF50", bg: "#E8F5E9", label: "Strong" },
-  MEDIUM: { color: "#FF9800", bg: "#FFF3E0", label: "Medium" },
-  WEAK: { color: "#F44336", bg: "#FFEBEE", label: "Weak" },
+  STRONG: { color: "#10b981", bg: "#d1fae5", border: "#10b981", label: "Strong" },
+  MEDIUM: { color: "#f59e0b", bg: "#fef3c7", border: "#f59e0b", label: "Medium" },
+  WEAK: { color: "#ef4444", bg: "#fee2e2", border: "#ef4444", label: "Weak" },
 };
+
+const quickPrompts = [
+  { icon: <LightbulbIcon />, text: "Workplace harassment case advice" },
+  { icon: <ScaleIcon />, text: "Cheque bounce notice response" },
+  { icon: <DescriptionIcon />, text: "Property dispute consultation" },
+  { icon: <BalanceIcon />, text: "Consumer complaint filing" },
+];
 
 interface ChatAreaProps {
   currentSession: ChatSession | null;
@@ -122,10 +131,6 @@ export default function ChatArea({ currentSession, onSessionChange, onRefetchSes
 
   const [createChatSession] = useMutation<CreateChatSessionResponse>(CREATE_CHAT_SESSION);
   const [sendMessageMutation, { loading }] = useMutation<SendMessageResponse>(SEND_MESSAGE);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [localMessages]);
 
   const parseAnalysisFromContent = (content: string) => {
     const categoryMatch = content.match(/\*\*Case Category:\*\* ([\s\S]*?)\n/);
@@ -167,7 +172,18 @@ export default function ChatArea({ currentSession, onSessionChange, onRefetchSes
     });
   }, [currentSession]);
 
-  const messages = currentSession ? sessionMessages : localMessages;
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [localMessages, currentSession]);
+
+  const messages = useMemo(() => {
+    const sessionMsgs = sessionMessages;
+    const localMsgs = localMessages;
+    if (localMsgs.length > 0) {
+      return [...sessionMsgs, ...localMsgs];
+    }
+    return sessionMsgs;
+  }, [sessionMessages, localMessages]);
 
   const handleCreateChat = async () => {
     try {
@@ -181,10 +197,11 @@ export default function ChatArea({ currentSession, onSessionChange, onRefetchSes
       if (data?.createChatSession) {
         onSessionChange(data.createChatSession);
         onRefetchSessions();
+        setLocalMessages([]);
         return data.createChatSession;
       }
     } catch (err) {
-      console.error("Failed to create chat:", err);
+      toast.error("Failed to create chat. Please try again.");
     }
     return null;
   };
@@ -231,6 +248,7 @@ export default function ChatArea({ currentSession, onSessionChange, onRefetchSes
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Failed to analyze case. Please try again.";
       setError(errorMessage);
+      toast.error(errorMessage);
     }
   };
 
@@ -241,153 +259,162 @@ export default function ChatArea({ currentSession, onSessionChange, onRefetchSes
     }
   };
 
+  const handleQuickPrompt = (text: string) => {
+    setInput(text);
+    inputRef.current?.focus();
+  };
+
   const getStrengthConfigFn = (strength: string) => {
-    return strengthConfig[strength as keyof typeof strengthConfig] || { color: "#9E9E9E", bg: "#F5F5F5", label: strength };
+    return strengthConfig[strength as keyof typeof strengthConfig] || { color: "#6b7280", bg: "#f3f4f6", border: "#6b7280", label: strength };
   };
 
   return (
-    <Box sx={{ flex: 1, display: "flex", flexDirection: "column" }}>
-      {/* Top Bar */}
-      <Box
-        sx={{
-          bgcolor: "#1a237e",
-          color: "white",
-          px: 3,
-          py: 1.5,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <IconButton size="small" onClick={() => navigate("/select-case")} sx={{ color: "white" }}>
-            <ArrowBackIcon />
-          </IconButton>
-          <Box>
-            <Typography variant="subtitle1" fontWeight={600}>
-              {currentSession?.title || "LegalGPT Assistant"}
-            </Typography>
-            <Typography variant="caption" sx={{ opacity: 0.8 }}>
-              {currentSession?.caseType || "Describe your case"}
-            </Typography>
-          </Box>
-        </Box>
-      </Box>
-
-      {/* Chat Messages */}
-      <Box sx={{ flex: 1, overflow: "auto", p: 2 }}>
-        {messages.length === 0 && (
-          <Fade in timeout={500}>
-            <Paper elevation={0} sx={{ p: 4, textAlign: "center", bgcolor: "transparent", maxWidth: 600, mx: "auto", mt: 4 }}>
-              <Avatar sx={{ width: 80, height: 80, mx: "auto", mb: 3, bgcolor: "#3949ab", fontSize: 40 }}>
-                <GavelIcon sx={{ fontSize: 40 }} />
+    <Box sx={{ flex: 1, display: "flex", flexDirection: "column", bgcolor: "#343541", height: "100%", overflow: "hidden" }}>
+      {/* Chat Messages Area */}
+      <Box sx={{ flex: 1, overflowY: "auto", p: 2, scrollBehavior: "smooth" }}>
+        {messages.length === 0 ? (
+            <Box sx={{ maxWidth: 700, mx: "auto", width: "100%", mt: 6 }}>
+            <Box sx={{ textAlign: "center", mb: 4 }}>
+              <Avatar sx={{ width: 56, height: 56, mx: "auto", mb: 2, bgcolor: "#10b981", fontSize: 28 }}>
+                <GavelIcon sx={{ fontSize: 28 }} />
               </Avatar>
-              <Typography variant="h5" fontWeight={700} sx={{ mb: 1, color: "#1a237e" }}>
-                Welcome to LegalGPT
+              <Typography variant="h5" sx={{ color: "#fff", fontWeight: 600, mb: 0.75 }}>
+                How can I help you today?
               </Typography>
-              <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-                Your AI-powered legal assistant for Indian law analysis
+              <Typography variant="body2" sx={{ color: "#a1a1aa" }}>
+                Describe your legal situation and I'll analyze it under Indian law
               </Typography>
-              <Box sx={{ display: "flex", justifyContent: "center", gap: 1, flexWrap: "wrap" }}>
-                <Chip label="Indian Laws" color="primary" size="small" />
-                <Chip label="Case Analysis" color="primary" size="small" />
-                <Chip label="Legal Guidance" color="primary" size="small" />
-              </Box>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 4, fontStyle: "italic" }}>
-                {currentSession ? "Describe your legal situation below..." : "Start a new chat to get started..."}
-              </Typography>
-            </Paper>
-          </Fade>
-        )}
+            </Box>
 
-        {loading && (
-          <Fade in>
-            <Paper sx={{ p: 2, mb: 2, maxWidth: 600, display: "flex", alignItems: "center", gap: 2, bgcolor: "white" }}>
-              <Avatar sx={{ bgcolor: "#3949ab" }}><GavelIcon /></Avatar>
-              <Box sx={{ flex: 1 }}>
-                <Typography variant="body2" sx={{ mb: 1 }}>Analyzing your case...</Typography>
-              </Box>
-            </Paper>
-          </Fade>
-        )}
+            <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5 }}>
+              {quickPrompts.map((prompt, idx) => (
+                <Box
+                  key={idx}
+                  onClick={() => handleQuickPrompt(prompt.text)}
+                  sx={{
+                    p: 2,
+                    bgcolor: "#3d3d4f",
+                    borderRadius: 2,
+                    cursor: "pointer",
+                    transition: "all 0.2s",
+                    "&:hover": { bgcolor: "#4a4a5c", transform: "translateY(-1px)" },
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1.5,
+                  }}
+                >
+                  <Box sx={{ color: "#10b981" }}>{prompt.icon}</Box>
+                  <Typography sx={{ color: "#fff", fontSize: "0.8rem" }}>{prompt.text}</Typography>
+                </Box>
+              ))}
+            </Box>
+          </Box>
+          ) : (
+          <Box sx={{ maxWidth: 900, mx: "auto", width: "100%" }}>
+            {messages.map((msg) => (
+              <Grow in key={msg.id} timeout={300}>
+                <Box 
+                  sx={{ 
+                    display: "flex", 
+                    gap: 2, 
+                    mb: 2, 
+                    px: 2,
+                    flexDirection: msg.role === "user" ? "row-reverse" : "row",
+                    alignItems: "flex-start",
+                  }}
+                >
+                  <Avatar
+                    sx={{
+                      bgcolor: msg.role === "assistant" ? "#10b981" : "#3b82f6",
+                      width: 32,
+                      height: 32,
+                      fontSize: 16,
+                    }}
+                  >
+                    {msg.role === "assistant" ? <GavelIcon sx={{ fontSize: 18 }} /> : <PersonIcon sx={{ fontSize: 18 }} />}
+                  </Avatar>
+                  <Box sx={{ maxWidth: "75%", display: "flex", flexDirection: "column", alignItems: msg.role === "user" ? "flex-end" : "flex-start" }}>
+                    {msg.analysis ? (
+                      <Box
+                        sx={{
+                          bgcolor: "#40414f",
+                          borderRadius: 2,
+                          p: 2.5,
+                          color: "#fff",
+                          width: "100%",
+                        }}
+                      >
+                        <Typography sx={{ fontSize: "0.85rem", fontWeight: 700, color: "#10b981", mb: 1 }}>
+                          Case Strength: {msg.analysis.strength}
+                        </Typography>
+                        
+                        <Typography sx={{ fontSize: "0.85rem", lineHeight: 1.6, color: "#e5e5e5", whiteSpace: "pre-wrap", mb: 1.5 }}>
+                          {msg.analysis.reason}
+                        </Typography>
 
-        {messages.map((msg) => (
-          <Grow in key={msg.id} timeout={300}>
-            <Box sx={{ display: "flex", justifyContent: msg.role === "user" ? "flex-end" : "flex-start", mb: 2 }}>
-              {msg.role === "assistant" && (
-                <Avatar sx={{ bgcolor: "#3949ab", mr: 1.5, mt: 0.5 }}><GavelIcon sx={{ fontSize: 20 }} /></Avatar>
-              )}
+                        {msg.analysis.legalAreas.length > 0 && (
+                          <Typography sx={{ fontSize: "0.8rem", color: "#a1a1aa", mb: 1 }}>
+                            Legal Areas: {msg.analysis.legalAreas.join(", ")}
+                          </Typography>
+                        )}
 
-              <Box sx={{ maxWidth: "70%" }}>
-                {msg.role === "user" && (
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5, justifyContent: "flex-end" }}>
-                    <Typography variant="caption" color="text.secondary">
-                      {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    </Typography>
-                    <Avatar sx={{ bgcolor: "#1e88e5", width: 24, height: 24 }}><PersonIcon sx={{ fontSize: 14 }} /></Avatar>
-                  </Box>
-                )}
-
-                {msg.analysis ? (
-                  <Paper elevation={2} sx={{ p: 3, borderRadius: 3, bgcolor: "white" }}>
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 2 }}>
-                      <GavelIcon sx={{ color: "#3949ab" }} />
-                      <Typography variant="h6" fontWeight={600} sx={{ color: "#1a237e" }}>Case Analysis Report</Typography>
-                    </Box>
-
-                    {msg.analysis.category && (
-                      <Box sx={{ mb: 2 }}>
-                        <Chip label={`Category: ${msg.analysis.category}`} sx={{ bgcolor: "#3949ab", color: "white", fontWeight: 600 }} />
+                        {msg.analysis.nextSteps.length > 0 && (
+                          <Box>
+                            <Typography sx={{ fontSize: "0.8rem", color: "#a1a1aa", mb: 0.5 }}>
+                              Suggested Steps:
+                            </Typography>
+                            <Box component="ul" sx={{ m: 0, pl: 2, pb: 0 }}>
+                              {msg.analysis.nextSteps.slice(0, 4).map((step: string, idx: number) => (
+                                <li key={idx} style={{ marginBottom: 2, color: "#e5e5e5", fontSize: "0.85rem" }}>
+                                  {step}
+                                </li>
+                              ))}
+                            </Box>
+                          </Box>
+                        )}
+                      </Box>
+                    ) : (
+                      <Box
+                        sx={{
+                          px: 2,
+                          py: 1.25,
+                          borderRadius: 2,
+                          bgcolor: msg.role === "user" ? "#3b82f6" : "#40414f",
+                          color: "#fff",
+                          maxWidth: "100%",
+                        }}
+                      >
+                        <Typography sx={{ fontSize: "0.9rem", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+                          {msg.text}
+                        </Typography>
+                        <Typography sx={{ fontSize: "0.65rem", color: "#9ca3af", mt: 0.5, textAlign: msg.role === "user" ? "right" : "left" }}>
+                          {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </Typography>
                       </Box>
                     )}
+                  </Box>
+                </Box>
+              </Grow>
+            ))}
 
-                    <Box sx={{ p: 2, borderRadius: 2, bgcolor: getStrengthConfigFn(msg.analysis.strength).bg, border: `2px solid ${getStrengthConfigFn(msg.analysis.strength).color}`, mb: 2 }}>
-                      <Typography variant="subtitle2" sx={{ color: "#666", mb: 0.5 }}>Case Strength</Typography>
-                      <Typography variant="h4" fontWeight={700} sx={{ color: getStrengthConfigFn(msg.analysis.strength).color }}>
-                        {getStrengthConfigFn(msg.analysis.strength).label}
-                      </Typography>
+            {loading && (
+              <Fade in>
+                <Box sx={{ display: "flex", gap: 1.5, px: 2 }}>
+                  <Avatar sx={{ bgcolor: "#10b981", width: 32, height: 32, fontSize: 14 }}>
+                    <GavelIcon sx={{ fontSize: 16 }} />
+                  </Avatar>
+                  <Box sx={{ bgcolor: "#40414f", borderRadius: 2, px: 2, py: 1.5 }}>
+                    <Box sx={{ display: "flex", gap: 0.75, alignItems: "center" }}>
+                      <Box sx={{ width: 6, height: 6, bgcolor: "#10b981", borderRadius: "50%", animation: "pulse 1s infinite" }} />
+                      <Box sx={{ width: 6, height: 6, bgcolor: "#10b981", borderRadius: "50%", animation: "pulse 1s infinite 0.2s" }} />
+                      <Box sx={{ width: 6, height: 6, bgcolor: "#10b981", borderRadius: "50%", animation: "pulse 1s infinite 0.4s" }} />
                     </Box>
-
-                    <Box sx={{ mb: 2 }}>
-                      <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>Analysis</Typography>
-                      <Typography variant="body2" sx={{ lineHeight: 1.7, color: "#444" }}>{msg.analysis.reason}</Typography>
-                    </Box>
-
-                    <Box sx={{ mb: 2 }}>
-                      <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>Relevant Legal Areas</Typography>
-                      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75 }}>
-                        {msg.analysis.legalAreas.map((area: string, idx: number) => (
-                          <Chip key={idx} label={area} size="small" sx={{ bgcolor: "#E8EAF6", color: "#3949ab", fontWeight: 500 }} />
-                        ))}
-                      </Box>
-                    </Box>
-
-                    <Box>
-                      <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>Suggested Next Steps</Typography>
-                      <Box component="ol" sx={{ m: 0, pl: 2.5 }}>
-                        {msg.analysis.nextSteps.map((step: string, idx: number) => (
-                          <li key={idx} style={{ marginBottom: 8 }}><Typography variant="body2">{step}</Typography></li>
-                        ))}
-                      </Box>
-                    </Box>
-
-                    <Box sx={{ mt: 2, pt: 2, borderTop: "1px dashed #ddd" }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontStyle: "italic" }}>
-                        This analysis is for guidance only. Please consult a licensed advocate for definitive legal advice.
-                      </Typography>
-                    </Box>
-                  </Paper>
-                ) : (
-                  <Paper elevation={1} sx={{ p: 2, borderRadius: 2, bgcolor: msg.role === "user" ? "#1e88e5" : "#333", color: "white" }}>
-                    <Typography variant="body2">{msg.text}</Typography>
-                  </Paper>
-                )}
-              </Box>
-
-              {msg.role === "user" && <Avatar sx={{ bgcolor: "#1e88e5", ml: 1.5, mt: 0.5 }}><PersonIcon /></Avatar>}
-            </Box>
-          </Grow>
-        ))}
+                  </Box>
+                </Box>
+              </Fade>
+            )}
+          </Box>
+        )}
         <div ref={messagesEndRef} />
       </Box>
 
@@ -398,29 +425,64 @@ export default function ChatArea({ currentSession, onSessionChange, onRefetchSes
       )}
 
       {/* Input Area */}
-      <Paper elevation={8} sx={{ p: 2, mx: 2, mb: 2, borderRadius: 4, display: "flex", gap: 1, alignItems: "center" }}>
-        <TextField
-          fullWidth
-          placeholder="Describe your legal situation..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyPress={handleKeyPress}
-          disabled={loading}
-          multiline
-          maxRows={4}
-          variant="outlined"
-          sx={{ "& .MuiOutlinedInput-root": { borderRadius: 3 } }}
-          inputRef={inputRef}
-        />
-        <Button
-          variant="contained"
-          onClick={sendMessage}
-          disabled={loading || !input.trim()}
-          sx={{ bgcolor: "#1a237e", minWidth: "auto", px: 2 }}
+      <Box sx={{ px: 2, py: 1.5, borderTop: "1px solid #40414f" }}>
+        <Box
+          sx={{
+            maxWidth: 900,
+            mx: "auto",
+            display: "flex",
+            gap: 1.5,
+            alignItems: "flex-end",
+          }}
         >
-          {loading ? <CircularProgress size={24} color="inherit" /> : <SendIcon />}
-        </Button>
-      </Paper>
+          <TextField
+            fullWidth
+            placeholder="Message LegalGPT..."
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyPress={handleKeyPress}
+            disabled={loading}
+            multiline
+            maxRows={4}
+            variant="outlined"
+            autoFocus
+            sx={{
+              "& .MuiOutlinedInput-root": {
+                bgcolor: "#40414f",
+                borderRadius: 2,
+                color: "#fff",
+                "& fieldset": { borderColor: "#52525b" },
+                "&:hover fieldset": { borderColor: "#6b7280" },
+                "&.Mui-focused fieldset": { borderColor: "#10b981" },
+              },
+              "& .MuiInputBase-input::placeholder": { color: "#9ca3af", opacity: 1 },
+            }}
+            inputRef={inputRef}
+          />
+          <Button
+            variant="contained"
+            onClick={sendMessage}
+            disabled={loading || !input.trim()}
+            sx={{
+              bgcolor: "#10b981",
+              minWidth: 42,
+              height: 42,
+              borderRadius: 2,
+              "&:hover": { bgcolor: "#059669" },
+              "&:disabled": { bgcolor: "#40414f", color: "#6b7280" },
+            }}
+          >
+            {loading ? <CircularProgress size={20} color="inherit" /> : <SendIcon />}
+          </Button>
+        </Box>
+      </Box>
+
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 0.4; }
+          50% { opacity: 1; }
+        }
+      `}</style>
     </Box>
   );
 }

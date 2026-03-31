@@ -1,4 +1,4 @@
-from app.graphql.types.auth import UserType, AuthPayload, LoginInput, SignupInput
+from app.graphql.types.auth import UserType, AuthPayload, LoginInput, SignupInput, MessageResponse
 from app.graphql.types.case import CaseAnalysisResult, CaseAnalysisInput, CaseStrength
 from app.graphql.types.chat import (
     ChatMessageType,
@@ -13,12 +13,28 @@ from app.graphql.types.analysis import (
     DocumentAnalysisResult,
     FileUploadResult,
 )
+from app.graphql.types.legal_notice import (
+    LegalNoticeType,
+    CreateLegalNoticeInput,
+    UpdateLegalNoticeInput,
+)
+from app.graphql.types.evidence import (
+    EvidenceType,
+    CreateEvidenceInput,
+    UpdateEvidenceInput,
+)
+from app.graphql.types.court_preparation import (
+    CourtPreparationType,
+    CreateCourtPreparationInput,
+    UpdateCourtPreparationInput,
+)
 
 __all__ = [
     "UserType",
     "AuthPayload",
     "LoginInput",
     "SignupInput",
+    "MessageResponse",
     "CaseAnalysisResult",
     "CaseAnalysisInput",
     "CaseStrength",
@@ -31,4 +47,13 @@ __all__ = [
     "FIRAnalysisResult",
     "DocumentAnalysisResult",
     "FileUploadResult",
+    "LegalNoticeType",
+    "CreateLegalNoticeInput",
+    "UpdateLegalNoticeInput",
+    "EvidenceType",
+    "CreateEvidenceInput",
+    "UpdateEvidenceInput",
+    "CourtPreparationType",
+    "CreateCourtPreparationInput",
+    "UpdateCourtPreparationInput",
 ]

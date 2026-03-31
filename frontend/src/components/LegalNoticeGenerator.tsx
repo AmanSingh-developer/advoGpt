@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Box,
   Typography,
@@ -12,6 +12,14 @@ import {
   Grid,
   Divider,
   Alert,
+  List,
+  ListItem,
+  ListItemText,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
 import {
   Description as DescriptionIcon,
@@ -24,8 +32,13 @@ import {
   Person as PersonIcon,
   Business as BusinessIcon,
   Email as EmailIcon,
+  Delete as DeleteIcon,
+  History as HistoryIcon,
 } from "@mui/icons-material";
 import html2pdf from "html2pdf.js";
+import { toast } from "react-toastify";
+import { useQuery, useMutation } from "@apollo/client/react";
+import { GET_LEGAL_NOTICES, CREATE_LEGAL_NOTICE, DELETE_LEGAL_NOTICE } from "../graphql/legalNotice";
 
 export type NoticeType =
   | "salary_recovery"
@@ -265,6 +278,16 @@ interface LegalNoticeGeneratorProps {
   token?: string;
 }
 
+interface SavedNotice {
+  id: string;
+  notice_type: string;
+  recipient_name: string;
+  sender_name: string;
+  form_data: string | null;
+  generated_content: string | null;
+  created_at: string;
+}
+
 export default function LegalNoticeGenerator(_props: LegalNoticeGeneratorProps) {
   const [activeStep, setActiveStep] = useState(0);
   const [selectedTemplate, setSelectedTemplate] = useState<NoticeType | null>(null);
@@ -275,6 +298,19 @@ export default function LegalNoticeGenerator(_props: LegalNoticeGeneratorProps) 
   const [senderAddress, setSenderAddress] = useState("");
   const [senderEmail, setSenderEmail] = useState("");
   const [generatedNotice, setGeneratedNotice] = useState("");
+  const [currentNoticeId, setCurrentNoticeId] = useState<string | null>(null);
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [noticeToDelete, setNoticeToDelete] = useState<SavedNotice | null>(null);
+
+  const { data: noticesData, refetch: refetchNotices } = useQuery(GET_LEGAL_NOTICES, {
+    skip: !_props.token,
+  });
+
+  const [createNotice] = useMutation(CREATE_LEGAL_NOTICE);
+  const [deleteNotice] = useMutation(DELETE_LEGAL_NOTICE);
+
+  const savedNotices: SavedNotice[] = noticesData?.getLegalNotices || [];
 
   const currentTemplate = useMemo(
     () => noticeTemplates.find((t) => t.id === selectedTemplate),
@@ -470,9 +506,34 @@ Date: ${today}
     return demands.join("\n");
   };
 
-  const handleGenerate = () => {
-    setGeneratedNotice(generateNoticeContent());
+  const handleGenerate = async () => {
+    const content = generateNoticeContent();
+    setGeneratedNotice(content);
     setActiveStep(2);
+
+    try {
+      const result = await createNotice({
+        variables: {
+          input: {
+            notice_type: selectedTemplate || "custom",
+            recipient_name: recipientName,
+            recipient_address: recipientAddress,
+            sender_name: senderName,
+            sender_address: senderAddress,
+            sender_email: senderEmail,
+            form_data: JSON.stringify(formData),
+            generated_content: content,
+          },
+        },
+      });
+      if (result.data?.createLegalNotice) {
+        setCurrentNoticeId(result.data.createLegalNotice.id);
+        toast.success("Notice saved to history!");
+        refetchNotices();
+      }
+    } catch (error) {
+      console.error("Failed to save notice:", error);
+    }
   };
 
   const handleDownloadPDF = async () => {
@@ -489,14 +550,16 @@ Date: ${today}
 
     try {
       await html2pdf().set(opt).from(element).save();
+      toast.success("PDF downloaded successfully!");
     } catch (error) {
-      console.error("Error generating PDF:", error);
+      toast.error("Failed to generate PDF. Please try again.");
     }
   };
 
   const handleCopyToClipboard = () => {
     const textContent = generatedNotice.replace(/<[^>]*>/g, "");
     navigator.clipboard.writeText(textContent);
+    toast.success("Copied to clipboard!");
   };
 
   const handleSendEmail = () => {
@@ -504,6 +567,7 @@ Date: ${today}
     const body = encodeURIComponent(generatedNotice.replace(/<[^>]*>/g, "\n").replace(/&nbsp;/g, " ").trim());
     const recipient = encodeURIComponent(recipientName);
     window.location.href = `mailto:${recipient}?subject=${subject}&body=${body}`;
+    toast.info("Opening email client...");
   };
 
   const handleReset = () => {
@@ -516,6 +580,43 @@ Date: ${today}
     setSenderAddress("");
     setSenderEmail("");
     setGeneratedNotice("");
+    setCurrentNoticeId(null);
+  };
+
+  const handleDeleteNotice = async () => {
+    if (!noticeToDelete) return;
+    try {
+      await deleteNotice({
+        variables: { noticeId: noticeToDelete.id },
+      });
+      toast.success("Notice deleted successfully!");
+      refetchNotices();
+    } catch (error) {
+      toast.error("Failed to delete notice");
+    }
+    setDeleteDialogOpen(false);
+    setNoticeToDelete(null);
+  };
+
+  const loadNoticeFromHistory = (notice: SavedNotice) => {
+    setSelectedTemplate(notice.notice_type as NoticeType);
+    setRecipientName(notice.recipient_name);
+    setSenderName(notice.sender_name);
+    if (notice.form_data) {
+      try {
+        const parsed = JSON.parse(notice.form_data);
+        setFormData(parsed);
+      } catch {
+        setFormData({});
+      }
+    }
+    if (notice.generated_content) {
+      setGeneratedNotice(notice.generated_content);
+    }
+    setCurrentNoticeId(notice.id);
+    setActiveStep(2);
+    setHistoryDialogOpen(false);
+    toast.info("Notice loaded from history");
   };
 
   const renderStepContent = () => {
@@ -752,9 +853,19 @@ Date: ${today}
 
   return (
     <Box sx={{ flex: 1, overflow: "auto", p: 3 }}>
-      <Typography variant="h5" fontWeight={600} sx={{ mb: 1, color: "#1a237e" }}>
-        Legal Notice Generator
-      </Typography>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
+        <Typography variant="h5" fontWeight={600} sx={{ color: "#1a237e" }}>
+          Legal Notice Generator
+        </Typography>
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<HistoryIcon />}
+          onClick={() => setHistoryDialogOpen(true)}
+        >
+          History ({savedNotices.length})
+        </Button>
+      </Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         Generate professional legal notices for various purposes under Indian law
       </Typography>
@@ -821,6 +932,57 @@ Date: ${today}
           )}
         </Box>
       </Box>
+
+      <Dialog open={historyDialogOpen} onClose={() => setHistoryDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Saved Legal Notices</DialogTitle>
+        <DialogContent>
+          {savedNotices.length === 0 ? (
+            <Typography color="text.secondary">No saved notices yet.</Typography>
+          ) : (
+            <List>
+              {savedNotices.map((notice) => (
+                <ListItem
+                  key={notice.id}
+                  secondaryAction={
+                    <IconButton
+                      edge="end"
+                      onClick={() => {
+                        setNoticeToDelete(notice);
+                        setDeleteDialogOpen(true);
+                      }}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  }
+                >
+                  <ListItemText
+                    primary={notice.notice_type.replace(/_/g, " ").toUpperCase()}
+                    secondary={`To: ${notice.recipient_name} | ${new Date(notice.created_at).toLocaleDateString()}`}
+                    onClick={() => loadNoticeFromHistory(notice)}
+                    sx={{ cursor: "pointer", "&:hover": { bgcolor: "#f5f5f5" } }}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setHistoryDialogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+        <DialogTitle>Delete Notice</DialogTitle>
+        <DialogContent>
+          <Typography>Are you sure you want to delete this notice? This action cannot be undone.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleDeleteNotice} color="error" variant="contained">
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

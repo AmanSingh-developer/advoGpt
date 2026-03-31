@@ -1,14 +1,18 @@
 import strawberry
 from app.graphql.types.auth import AuthPayload, LoginInput, SignupInput, UserType, MessageResponse
 from app.graphql.types.chat import ChatSessionType, ChatMessageType, CreateChatSessionInput, SendMessageInput
+from app.graphql.types.legal_notice import LegalNoticeType, CreateLegalNoticeInput, UpdateLegalNoticeInput
+from app.graphql.types.evidence import EvidenceType, CreateEvidenceInput, UpdateEvidenceInput
+from app.graphql.types.court_preparation import CourtPreparationType, CreateCourtPreparationInput, UpdateCourtPreparationInput
 from app.database import get_db
 from sqlalchemy import select
-from app.models import User, ChatSession, ChatMessage
+from app.models import User, ChatSession, ChatMessage, LegalNotice, Evidence, CourtPreparation
 from app.utils import hash_password, verify_password, create_access_token, validate_password, decode_token
 from app.services import analyze_legal_case, rag_service
 from sqlalchemy.exc import IntegrityError
 from strawberry.types import Info
 import uuid
+import json
 
 
 @strawberry.type
@@ -206,5 +210,367 @@ class Mutation:
                 await db.commit()
 
                 return MessageResponse(success=True, message="Chat deleted successfully")
+        except Exception as e:
+            raise Exception(str(e))
+
+    @strawberry.mutation
+    async def create_legal_notice(self, info: Info, input: CreateLegalNoticeInput) -> LegalNoticeType:
+        try:
+            user_id = info.context.get("user_id")
+            if not user_id:
+                raise Exception("Authentication required")
+
+            async for db in get_db():
+                notice = LegalNotice(
+                    user_id=uuid.UUID(user_id),
+                    notice_type=input.notice_type,
+                    recipient_name=input.recipient_name,
+                    recipient_address=input.recipient_address,
+                    sender_name=input.sender_name,
+                    sender_address=input.sender_address,
+                    sender_email=input.sender_email,
+                    form_data=input.form_data,
+                    generated_content=input.generated_content,
+                )
+                db.add(notice)
+                await db.commit()
+                await db.refresh(notice)
+
+                return LegalNoticeType(
+                    id=notice.id,
+                    notice_type=notice.notice_type,
+                    recipient_name=notice.recipient_name,
+                    recipient_address=notice.recipient_address,
+                    sender_name=notice.sender_name,
+                    sender_address=notice.sender_address,
+                    sender_email=notice.sender_email,
+                    form_data=notice.form_data,
+                    generated_content=notice.generated_content,
+                    created_at=notice.created_at,
+                    updated_at=notice.updated_at,
+                )
+        except Exception as e:
+            raise Exception(str(e))
+
+    @strawberry.mutation
+    async def update_legal_notice(self, info: Info, input: UpdateLegalNoticeInput) -> LegalNoticeType:
+        try:
+            user_id = info.context.get("user_id")
+            if not user_id:
+                raise Exception("Authentication required")
+
+            async for db in get_db():
+                notice_result = await db.execute(
+                    select(LegalNotice).where(
+                        LegalNotice.id == uuid.UUID(input.id),
+                        LegalNotice.user_id == uuid.UUID(user_id)
+                    )
+                )
+                notice = notice_result.scalar_one_or_none()
+                if not notice:
+                    raise Exception("Legal notice not found")
+
+                if input.recipient_name is not None:
+                    notice.recipient_name = input.recipient_name
+                if input.recipient_address is not None:
+                    notice.recipient_address = input.recipient_address
+                if input.sender_name is not None:
+                    notice.sender_name = input.sender_name
+                if input.sender_address is not None:
+                    notice.sender_address = input.sender_address
+                if input.sender_email is not None:
+                    notice.sender_email = input.sender_email
+                if input.form_data is not None:
+                    notice.form_data = input.form_data
+                if input.generated_content is not None:
+                    notice.generated_content = input.generated_content
+
+                await db.commit()
+                await db.refresh(notice)
+
+                return LegalNoticeType(
+                    id=notice.id,
+                    notice_type=notice.notice_type,
+                    recipient_name=notice.recipient_name,
+                    recipient_address=notice.recipient_address,
+                    sender_name=notice.sender_name,
+                    sender_address=notice.sender_address,
+                    sender_email=notice.sender_email,
+                    form_data=notice.form_data,
+                    generated_content=notice.generated_content,
+                    created_at=notice.created_at,
+                    updated_at=notice.updated_at,
+                )
+        except Exception as e:
+            raise Exception(str(e))
+
+    @strawberry.mutation
+    async def delete_legal_notice(self, info: Info, notice_id: str) -> MessageResponse:
+        try:
+            user_id = info.context.get("user_id")
+            if not user_id:
+                raise Exception("Authentication required")
+
+            async for db in get_db():
+                notice_result = await db.execute(
+                    select(LegalNotice).where(
+                        LegalNotice.id == uuid.UUID(notice_id),
+                        LegalNotice.user_id == uuid.UUID(user_id)
+                    )
+                )
+                notice = notice_result.scalar_one_or_none()
+                if not notice:
+                    raise Exception("Legal notice not found")
+
+                await db.delete(notice)
+                await db.commit()
+
+                return MessageResponse(success=True, message="Legal notice deleted successfully")
+        except Exception as e:
+            raise Exception(str(e))
+
+    @strawberry.mutation
+    async def create_evidence(self, info: Info, input: CreateEvidenceInput) -> EvidenceType:
+        try:
+            user_id = info.context.get("user_id")
+            if not user_id:
+                raise Exception("Authentication required")
+
+            async for db in get_db():
+                evidence = Evidence(
+                    user_id=uuid.UUID(user_id),
+                    name=input.name,
+                    evidence_type=input.evidence_type,
+                    category=input.category,
+                    description=input.description,
+                    tags=input.tags,
+                    notes=input.notes,
+                    chain_of_custody=input.chain_of_custody,
+                    analysis=input.analysis,
+                )
+                db.add(evidence)
+                await db.commit()
+                await db.refresh(evidence)
+
+                return EvidenceType(
+                    id=evidence.id,
+                    name=evidence.name,
+                    evidence_type=evidence.evidence_type,
+                    category=evidence.category,
+                    description=evidence.description,
+                    tags=evidence.tags,
+                    notes=evidence.notes,
+                    chain_of_custody=evidence.chain_of_custody,
+                    analysis=evidence.analysis,
+                    created_at=evidence.created_at,
+                    updated_at=evidence.updated_at,
+                )
+        except Exception as e:
+            raise Exception(str(e))
+
+    @strawberry.mutation
+    async def update_evidence(self, info: Info, input: UpdateEvidenceInput) -> EvidenceType:
+        try:
+            user_id = info.context.get("user_id")
+            if not user_id:
+                raise Exception("Authentication required")
+
+            async for db in get_db():
+                evidence_result = await db.execute(
+                    select(Evidence).where(
+                        Evidence.id == uuid.UUID(input.id),
+                        Evidence.user_id == uuid.UUID(user_id)
+                    )
+                )
+                evidence = evidence_result.scalar_one_or_none()
+                if not evidence:
+                    raise Exception("Evidence not found")
+
+                if input.name is not None:
+                    evidence.name = input.name
+                if input.evidence_type is not None:
+                    evidence.evidence_type = input.evidence_type
+                if input.category is not None:
+                    evidence.category = input.category
+                if input.description is not None:
+                    evidence.description = input.description
+                if input.tags is not None:
+                    evidence.tags = input.tags
+                if input.notes is not None:
+                    evidence.notes = input.notes
+                if input.chain_of_custody is not None:
+                    evidence.chain_of_custody = input.chain_of_custody
+                if input.analysis is not None:
+                    evidence.analysis = input.analysis
+
+                await db.commit()
+                await db.refresh(evidence)
+
+                return EvidenceType(
+                    id=evidence.id,
+                    name=evidence.name,
+                    evidence_type=evidence.evidence_type,
+                    category=evidence.category,
+                    description=evidence.description,
+                    tags=evidence.tags,
+                    notes=evidence.notes,
+                    chain_of_custody=evidence.chain_of_custody,
+                    analysis=evidence.analysis,
+                    created_at=evidence.created_at,
+                    updated_at=evidence.updated_at,
+                )
+        except Exception as e:
+            raise Exception(str(e))
+
+    @strawberry.mutation
+    async def delete_evidence(self, info: Info, evidence_id: str) -> MessageResponse:
+        try:
+            user_id = info.context.get("user_id")
+            if not user_id:
+                raise Exception("Authentication required")
+
+            async for db in get_db():
+                evidence_result = await db.execute(
+                    select(Evidence).where(
+                        Evidence.id == uuid.UUID(evidence_id),
+                        Evidence.user_id == uuid.UUID(user_id)
+                    )
+                )
+                evidence = evidence_result.scalar_one_or_none()
+                if not evidence:
+                    raise Exception("Evidence not found")
+
+                await db.delete(evidence)
+                await db.commit()
+
+                return MessageResponse(success=True, message="Evidence deleted successfully")
+        except Exception as e:
+            raise Exception(str(e))
+
+    @strawberry.mutation
+    async def create_court_preparation(self, info: Info, input: CreateCourtPreparationInput) -> CourtPreparationType:
+        try:
+            user_id = info.context.get("user_id")
+            if not user_id:
+                raise Exception("Authentication required")
+
+            async for db in get_db():
+                prep = CourtPreparation(
+                    user_id=uuid.UUID(user_id),
+                    case_name=input.case_name,
+                    court_type=input.court_type,
+                    case_stage=input.case_stage,
+                    hearing_date=input.hearing_date,
+                    opposing_party=input.opposing_party,
+                    judge_name=input.judge_name,
+                    timeline_events=input.timeline_events,
+                    examination_questions=input.examination_questions,
+                    checklist_items=input.checklist_items,
+                    legal_arguments=input.legal_arguments,
+                )
+                db.add(prep)
+                await db.commit()
+                await db.refresh(prep)
+
+                return CourtPreparationType(
+                    id=prep.id,
+                    case_name=prep.case_name,
+                    court_type=prep.court_type,
+                    case_stage=prep.case_stage,
+                    hearing_date=prep.hearing_date,
+                    opposing_party=prep.opposing_party,
+                    judge_name=prep.judge_name,
+                    timeline_events=prep.timeline_events,
+                    examination_questions=prep.examination_questions,
+                    checklist_items=prep.checklist_items,
+                    legal_arguments=prep.legal_arguments,
+                    created_at=prep.created_at,
+                    updated_at=prep.updated_at,
+                )
+        except Exception as e:
+            raise Exception(str(e))
+
+    @strawberry.mutation
+    async def update_court_preparation(self, info: Info, input: UpdateCourtPreparationInput) -> CourtPreparationType:
+        try:
+            user_id = info.context.get("user_id")
+            if not user_id:
+                raise Exception("Authentication required")
+
+            async for db in get_db():
+                prep_result = await db.execute(
+                    select(CourtPreparation).where(
+                        CourtPreparation.id == uuid.UUID(input.id),
+                        CourtPreparation.user_id == uuid.UUID(user_id)
+                    )
+                )
+                prep = prep_result.scalar_one_or_none()
+                if not prep:
+                    raise Exception("Court preparation not found")
+
+                if input.case_name is not None:
+                    prep.case_name = input.case_name
+                if input.court_type is not None:
+                    prep.court_type = input.court_type
+                if input.case_stage is not None:
+                    prep.case_stage = input.case_stage
+                if input.hearing_date is not None:
+                    prep.hearing_date = input.hearing_date
+                if input.opposing_party is not None:
+                    prep.opposing_party = input.opposing_party
+                if input.judge_name is not None:
+                    prep.judge_name = input.judge_name
+                if input.timeline_events is not None:
+                    prep.timeline_events = input.timeline_events
+                if input.examination_questions is not None:
+                    prep.examination_questions = input.examination_questions
+                if input.checklist_items is not None:
+                    prep.checklist_items = input.checklist_items
+                if input.legal_arguments is not None:
+                    prep.legal_arguments = input.legal_arguments
+
+                await db.commit()
+                await db.refresh(prep)
+
+                return CourtPreparationType(
+                    id=prep.id,
+                    case_name=prep.case_name,
+                    court_type=prep.court_type,
+                    case_stage=prep.case_stage,
+                    hearing_date=prep.hearing_date,
+                    opposing_party=prep.opposing_party,
+                    judge_name=prep.judge_name,
+                    timeline_events=prep.timeline_events,
+                    examination_questions=prep.examination_questions,
+                    checklist_items=prep.checklist_items,
+                    legal_arguments=prep.legal_arguments,
+                    created_at=prep.created_at,
+                    updated_at=prep.updated_at,
+                )
+        except Exception as e:
+            raise Exception(str(e))
+
+    @strawberry.mutation
+    async def delete_court_preparation(self, info: Info, preparation_id: str) -> MessageResponse:
+        try:
+            user_id = info.context.get("user_id")
+            if not user_id:
+                raise Exception("Authentication required")
+
+            async for db in get_db():
+                prep_result = await db.execute(
+                    select(CourtPreparation).where(
+                        CourtPreparation.id == uuid.UUID(preparation_id),
+                        CourtPreparation.user_id == uuid.UUID(user_id)
+                    )
+                )
+                prep = prep_result.scalar_one_or_none()
+                if not prep:
+                    raise Exception("Court preparation not found")
+
+                await db.delete(prep)
+                await db.commit()
+
+                return MessageResponse(success=True, message="Court preparation deleted successfully")
         except Exception as e:
             raise Exception(str(e))

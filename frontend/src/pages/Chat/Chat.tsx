@@ -16,6 +16,8 @@ import {
   Description as DescriptionIcon,
   Folder as FolderIcon,
   Assessment as AssessmentIcon,
+  FolderCopy as FolderCopyIcon,
+  CalendarMonth as CalendarIcon,
 } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
@@ -25,13 +27,17 @@ import type { ChatHistoryRef } from "../../components/ChatHistory";
 import FIRAnalyzer from "../../components/FIRAnalyzer";
 import DocumentAnalyzer from "../../components/DocumentAnalyzer";
 import LegalNoticeGenerator from "../../components/LegalNoticeGenerator";
+import EvidenceAnalyzer from "../../components/EvidenceAnalyzer";
+import CourtPreparation from "../../components/CourtPreparation";
 
-type FeatureTab = "chat" | "documents" | "fir" | "notice";
+type FeatureTab = "chat" | "documents" | "fir" | "notice" | "evidence" | "court";
 
 const features = [
   { id: "chat" as FeatureTab, label: "Case Analysis", icon: <GavelIcon /> },
   { id: "fir" as FeatureTab, label: "FIR Analysis", icon: <DescriptionIcon /> },
   { id: "documents" as FeatureTab, label: "Documents", icon: <FolderIcon /> },
+  { id: "evidence" as FeatureTab, label: "Evidence", icon: <FolderCopyIcon /> },
+  { id: "court" as FeatureTab, label: "Court Prep", icon: <CalendarIcon /> },
   { id: "notice" as FeatureTab, label: "Legal Notice", icon: <AssessmentIcon /> },
 ];
 
@@ -89,6 +95,10 @@ export default function Chat() {
         return <FIRAnalyzer token={token || ""} />;
       case "documents":
         return <DocumentAnalyzer token={token || ""} />;
+      case "evidence":
+        return <EvidenceAnalyzer token={token || ""} />;
+      case "court":
+        return <CourtPreparation token={token || ""} />;
       case "notice":
         return <LegalNoticeGenerator token={token || ""} />;
       case "chat":
@@ -187,15 +197,17 @@ export default function Chat() {
         {renderFeatureContent()}
       </Box>
 
-      {/* Right Sidebar - Chat History */}
-      <ChatHistory
-        ref={chatHistoryRef}
-        token={token || ""}
-        currentSessionId={currentSession?.id || null}
-        onSelectSession={handleSessionSelect}
-        onSessionDeleted={handleSessionDeleted}
-        onNewSessionCreated={handleNewSessionCreated}
-      />
+      {/* Right Sidebar - Chat History (only visible in Chat view) */}
+      {activeFeature === "chat" && (
+        <ChatHistory
+          ref={chatHistoryRef}
+          token={token || ""}
+          currentSessionId={currentSession?.id || null}
+          onSelectSession={handleSessionSelect}
+          onSessionDeleted={handleSessionDeleted}
+          onNewSessionCreated={handleNewSessionCreated}
+        />
+      )}
     </Box>
   );
 }

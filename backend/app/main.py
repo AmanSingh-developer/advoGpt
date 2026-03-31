@@ -43,7 +43,7 @@ app.include_router(gql_app, prefix="/graphql")
 @app.on_event("startup")
 async def startup_event():
     from app.database import engine, Base
-    from app.models import User, ChatSession, ChatMessage
+    from app.models import User, ChatSession, ChatMessage, LegalNotice, Evidence, CourtPreparation
 
     try:
         async with engine.begin() as conn:

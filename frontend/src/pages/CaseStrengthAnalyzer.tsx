@@ -17,6 +17,7 @@ import {
 } from "@mui/material";
 import { gql } from "@apollo/client";
 import { useMutation } from "@apollo/client/react";
+import { toast } from "react-toastify";
 
 const ANALYZE_CASE_MUTATION = gql`
   mutation AnalyzeCase($story: String!, $caseType: String!) {
@@ -87,9 +88,10 @@ const CaseStrengthAnalyzer = () => {
         setReason(data.analyzeCase.reason);
         setLegalAreas(data.analyzeCase.legalAreas);
         setNextSteps(data.analyzeCase.nextSteps);
+        toast.success("Case analyzed successfully!");
       }
     } catch (err) {
-      console.error("Analysis failed:", err);
+      toast.error("Analysis failed. Please try again.");
     }
   };
 
