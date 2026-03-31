@@ -24,6 +24,7 @@ import ChatHistory from "../../components/ChatHistory";
 import type { ChatHistoryRef } from "../../components/ChatHistory";
 import FIRAnalyzer from "../../components/FIRAnalyzer";
 import DocumentAnalyzer from "../../components/DocumentAnalyzer";
+import LegalNoticeGenerator from "../../components/LegalNoticeGenerator";
 
 type FeatureTab = "chat" | "documents" | "fir" | "notice";
 
@@ -89,17 +90,7 @@ export default function Chat() {
       case "documents":
         return <DocumentAnalyzer token={token || ""} />;
       case "notice":
-        return (
-          <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column" }}>
-            <AssessmentIcon sx={{ fontSize: 80, color: "#ccc", mb: 2 }} />
-            <Typography variant="h5" gutterBottom>
-              Legal Notice Generator (Coming Soon)
-            </Typography>
-            <Typography color="text.secondary">
-              Generate legal notices for salary recovery, property disputes, etc.
-            </Typography>
-          </Box>
-        );
+        return <LegalNoticeGenerator token={token || ""} />;
       case "chat":
       default:
         return (
