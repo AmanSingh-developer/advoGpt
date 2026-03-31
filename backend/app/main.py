@@ -43,7 +43,7 @@ app.include_router(gql_app, prefix="/graphql")
 @app.on_event("startup")
 async def startup_event():
     from app.database import engine, Base
-    from app.models import User, ChatSession, ChatMessage
+    from app.models import User, ChatSession, ChatMessage, LegalNotice, Evidence, CourtPreparation
 
     try:
         async with engine.begin() as conn:
@@ -62,7 +62,8 @@ async def startup_event():
 @app.post("/api/upload-document")
 async def upload_document(
     file: UploadFile = File(...),
-    user_id: str = None
+    user_id: str = None,
+    doc_type: str = "general"
 ):
     allowed_types = ["application/pdf", "text/plain"]
     if file.content_type not in allowed_types:
@@ -85,17 +86,23 @@ async def upload_document(
     try:
         file_path = document_processor.save_uploaded_file(content, filename)
 
-        result = await rag_service.add_user_document(
+        text = document_processor.extract_text_from_pdf(file_path) if file.content_type == "application/pdf" else document_processor.extract_text_from_txt(file_path)
+
+        await rag_service.add_user_document(
             file_path=file_path,
             filename=file.filename or "document",
             user_id=user_id or "anonymous"
         )
 
+        preview = text[:500] + "..." if len(text) > 500 else text
+
         return {
             "success": True,
             "file_id": file_id,
             "filename": file.filename,
-            "chunks_indexed": result["chunks"]
+            "file_type": doc_type,
+            "text_preview": preview,
+            "text_length": len(text)
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
